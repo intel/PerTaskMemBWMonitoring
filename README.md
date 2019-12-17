@@ -3,10 +3,10 @@ The Python scripts are created to provide a way for monitoring and reporting per
 
 ## Examples
 1. Monitoring memory bandwidth consumption of specfied task(s):
-![](https://github.com/intel/PerTaskMemBWMonitoring/tree/master/img/Screenshot_1.png)
+![](https://github.com/intel/PerTaskMemBWMonitoring/blob/master/img/Screenshot_1.PNG)
 
 2. Monitoring memory bandwidth consumption of all tasks:
-![](https://github.com/intel/PerTaskMemBWMonitoring/tree/master/img/Screenshot_2.png)
+![](https://github.com/intel/PerTaskMemBWMonitoring/blob/master/img/Screenshot_2.PNG)
 
 ## How it works
 Using Linux profiling tool "perf", related PMU counters are read out from core/uncore/offcore registers and saved to log files(by bw-collect.py), then per-task memory read/write bandwidth are calculated out from the saved statistic data and printed outi(by bw-report.py).
