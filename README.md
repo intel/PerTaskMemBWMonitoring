@@ -50,7 +50,7 @@ optional arguments:
 
 ## Supported CPUs
 | CPU Family | Micro Architecture | Family/Model | Support Verified |
-| :-----------------------: | :---------------: | :---------------: |
+| :-----------------------: | :---------------: | :---------------: | :---------: |
 | Xeon-SP | Sky Lake | 06/85 | YES |
 | Xeon-SP | Cascade Lake | 06/85 | YES |
 
