@@ -9,22 +9,26 @@ The Python scripts are created to provide a way for monitoring and reporting per
 ![](https://github.com/intel/PerTaskMemBWMonitoring/blob/master/img/Screenshot_2.PNG)
 
 ## How it works
-Using Linux profiling tool "perf", related PMU counters are read out from core/uncore/offcore registers and saved to log files(by bw-collect.py), then per-task memory read/write bandwidth are calculated out from the saved statistic data and printed outi(by bw-report.py).
+Using Linux profiling tool "perf", related PMU counters are read out from core/uncore/offcore registers and saved to log files(by bw-collect.py), then per-task memory read/write bandwidth are calculated out from the saved statistic data and printed out(by bw-report.py).
 
 #### Per-task read bandwidth
 Per-task read bandwidth are calculated as(MB/s):
-`per-task memory read BW(MB/s) = all cache line reads from offcore_rsp * 64 / measure time / 1024*1024`
+
+``per-task memory read BW(MB/s) = all cache line reads from offcore_rsp * 64 / measure time / 1024*1024``
+
 where bit definitions for offcore_rsp MSR can be found in Chapter 18.3.2 of Intel SDM.
 
 #### Per-task write bandwidth
 Since there's no direct PMU counts available so far for per-task write bandwidth, we are estimating it with the total memory write operations(UNC_M_WPA_INSERTS) and ratio of per-task/total memory write instructions retired, which translates into:
-`per-task write BW(MB/s) = (Per-task MEM_INST_RETIRED.ALL_STORES / total MEM_INST_RETIRED.ALL_STORES) * all UNC_M_WPQ_INSERTS * 64 / measure time / 1024*1024`
+
+``per-task write BW(MB/s) = (Per-task MEM_INST_RETIRED.ALL_STORES / total MEM_INST_RETIRED.ALL_STORES) * all UNC_M_WPQ_INSERTS * 64 / measure time / 1024*1024``
 
 ## Setup
 #### Prerequisites
 * perf
-* Python 3
-__Python 3.x__ and Linux profiling tool __perf__ are needed to work with these scripts. Make sure both are installed.
+* Python2 or Python3
+
+__Python2(>=2.7)__ or __Python3(>=3.6)__, and Linux profiling tool __perf__ are needed to work with these scripts. Make sure both are installed.
 
 #### Download scripts and run as root
 Note that __root__ priviledge is needed to run these scripts. To get help info:
@@ -45,4 +49,12 @@ optional arguments:
 ```
 
 ## Supported CPUs
-* Intel Xeon Scalable Processor with Family/Model mumber of 06/85.
+| CPU Family | Micro Architecture | Family/Model | Support Verified |
+| :-----------------------: | :---------------: | :---------------: |
+| Xeon-SP | Sky Lake | 06/85 | YES |
+| Xeon-SP | Cascade Lake | 06/85 | YES |
+
+## Verified Linux Release
+| Linux Release  | Kernel Version | Python Version | Perf Version | Specified Task BW Monitoring Support | All Tasks BW Monitoring Support |
+| :-----------------------: |:---------------:| :-----:| :-----:| :-----:| :-----:|
+| CentOS 7.6 | 3.10.0-957.el7.x86_64 | python-2.7.5-76.el7.x86_64 | perf-3.10.0-957.el7.x86_64 | YES | NO |
