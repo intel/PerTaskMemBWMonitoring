@@ -30,11 +30,11 @@ uncore_imc_write = {
 }
 
 core_all_loads = {
-    "85": "MEM_INST_RETIRED.ALL_LOADS",
+    "85": "cpu/event=0xd0,umask=0x81,name=MEM_INST_RETIRED.ALL_LOADS/",
 }
 
 core_all_stores = {
-    "85": "MEM_INST_RETIRED.ALL_STORES",
+    "85": "cpu/event=0xd0,umask=0x82,name=MEM_INST_RETIRED.ALL_STORES/",
 }
 
 class PerfRun(object):
