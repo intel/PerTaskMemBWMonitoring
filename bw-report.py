@@ -15,14 +15,6 @@ DEFAULT_INTERVAL = 5
 
 FNULL = open(os.devnull, 'w')
 cur_dir = os.getcwd()
-exists_cache = dict()
-
-def path_exists(s):
-    if s in exists_cache:
-        return exists_cache[s]
-    found = os.path.exists(s)
-    exists_cache[s] = found
-    return found
 
 def collect_system_bw(all_stores_dict, pid):
     if pid == -1:
@@ -30,7 +22,7 @@ def collect_system_bw(all_stores_dict, pid):
     else:
         lp = os.path.join(cur_dir, "logs", str(pid), "system.log")
 
-    if not path_exists(lp):
+    if not os.path.exists(lp):
         sys.exit("No %s found, something wrong!\n" % lp)
 
     fd = open(lp)
@@ -60,7 +52,7 @@ def collect_task_bw(read_dict, all_stores_dict, pid):
     else:
         lp = os.path.join(cur_dir, "logs", str(pid), "task.log")
 
-    if not path_exists(lp):
+    if not os.path.exists(lp):
         sys.exit("No %s found, something wrong!\n" % lp)
 
     fd = open(lp)
@@ -102,7 +94,7 @@ def collect_imc_bw(pid):
     else:
         lp = os.path.join(cur_dir, "logs", str(pid), "unc.log")
 
-    if not path_exists(lp):
+    if not os.path.exists(lp):
         sys.exit("No %s found, something wrong!\n" % lp)
 
     fd = open(lp)
@@ -135,7 +127,7 @@ def collect_multi_imc_bw(pid):
     else:
         lp = os.path.join(cur_dir, "logs", str(pid), "unc.log")
 
-    if not path_exists(lp):
+    if not os.path.exists(lp):
         sys.exit("No %s found, something wrong!\n" % lp)
 
     fd = open(lp)
@@ -229,19 +221,19 @@ def parse_args(cmd_d):
 
 def clean_logs(pid):
     if pid == -1:
-        if path_exists(os.path.join(cur_dir, "logs", "task.log")):
+        if os.path.exists(os.path.join(cur_dir, "logs", "task.log")):
             os.remove(os.path.join(cur_dir, "logs", "task.log"))
-        if path_exists(os.path.join(cur_dir, "logs", "unc.log")):
+        if os.path.exists(os.path.join(cur_dir, "logs", "unc.log")):
             os.remove(os.path.join(cur_dir, "logs", "unc.log"))
-        if path_exists(os.path.join(cur_dir, "logs", "system.log")):
+        if os.path.exists(os.path.join(cur_dir, "logs", "system.log")):
             os.remove(os.path.join(cur_dir, "logs", "system.log"))
     else:
-        if path_exists(os.path.join(cur_dir, "logs", str(pid))):
+        if os.path.exists(os.path.join(cur_dir, "logs", str(pid))):
             shutil.rmtree(os.path.join(cur_dir, "logs", str(pid)))
 
     # remove logs folder if it's empty
     if not os.listdir(os.path.join(cur_dir, "logs")):
-       os.rmdir(os.path.join(cur_dir, "logs")) 
+        os.rmdir(os.path.join(cur_dir, "logs"))
 
 def calc_print_bw(pid, multi_imc):
     run = 1
