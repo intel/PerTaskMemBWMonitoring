@@ -55,6 +55,5 @@ optional arguments:
 | Xeon-SP | Cascade Lake | 06/85 | YES |
 
 ## Verified Linux Release
-| Linux Release  | Kernel Version | Python Version | Perf Version | Specified Task BW Monitoring Support | All Tasks BW Monitoring Support |
-| :-----------------------: |:---------------:| :-----:| :-----:| :-----:| :-----:|
-| CentOS 7.6 | 3.10.0-957.el7.x86_64 | python-2.7.5-76.el7.x86_64 | perf-3.10.0-957.el7.x86_64 | YES | NO |
+![](https://github.com/intel/PerTaskMemBWMonitoring/blob/master/img/Verified_Release.PNG)
+
