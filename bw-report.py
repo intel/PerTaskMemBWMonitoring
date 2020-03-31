@@ -251,7 +251,8 @@ def calc_print_bw(pid, multi_imc):
         imc_read_bw, imc_write_bw, imc_time = collect_imc_bw(pid)
 
     if task_time == 0.0 or imc_time == 0.0 or system_time == 0.0:
-        sys.exit("Measured time is 0, retry please!")
+        # time is 0 means task ended, just return
+        return 0
 
     imc_read_sec = imc_read_bw / (1024*1024) / imc_time
     imc_write_sec = imc_write_bw / (1024*1024) / imc_time
