@@ -235,7 +235,7 @@ def clean_logs(pid):
     if not os.listdir(os.path.join(cur_dir, "logs")):
         os.rmdir(os.path.join(cur_dir, "logs"))
 
-def calc_print_bw(pid, multi_imc):
+def calc_print_bw(pid):
     run = 1
 
     task_read_dict = {}
@@ -245,24 +245,21 @@ def calc_print_bw(pid, multi_imc):
     system_all_stores_dict = {}
     system_time = collect_system_bw(system_all_stores_dict, pid)
 
-    if multi_imc == 1:
-        imc_read_bw, imc_write_bw, imc_time = collect_multi_imc_bw(pid)
-    else:
-        imc_read_bw, imc_write_bw, imc_time = collect_imc_bw(pid)
+    imc_read_bytes, imc_write_bytes, imc_time = collect_multi_imc_bw(pid)
 
     if task_time == 0.0 or imc_time == 0.0 or system_time == 0.0:
         # time is 0 means task ended, just return
         return 0
 
-    imc_read_sec = imc_read_bw / (1024*1024) / imc_time
-    imc_write_sec = imc_write_bw / (1024*1024) / imc_time
+    imc_read_bw = imc_read_bytes / (1024*1024) / imc_time
+    imc_write_bw = imc_write_bytes / (1024*1024) / imc_time
 
     for k in sorted(task_read_dict, key=task_read_dict.__getitem__, reverse=True):
         v = float(task_read_dict[k] * 64)
-        task_read_sec = v / (1024*1024) / task_time
-        r = task_read_sec / imc_read_sec
+        task_read_bw = v / (1024*1024) / task_time
+        r = task_read_bw / imc_read_bw
 
-        task_write_sec = 0.0
+        task_write_bw = 0.0
 
         task_name = ""
         # when "perf stat -a --per-thread..", k looks like "python2-47361",
@@ -271,7 +268,7 @@ def calc_print_bw(pid, multi_imc):
             task_pid = k.split('-')[-1]
         if k in task_all_stores_dict and system_all_stores_dict[0] > 0:
             f = float(task_all_stores_dict[k]) / float(system_all_stores_dict[0])
-            task_write_sec = f * imc_write_sec
+            task_write_bw = f * imc_write_bw
 
             # when 'perf stat --per-thread' for all tasks, get task name from task_pid instead of k
             if pid == -1:
@@ -289,9 +286,8 @@ def calc_print_bw(pid, multi_imc):
 
             # only print for tasks that read/write BW ratio is not 0.0
             if(r > 0.0005 or f > 0.0005):
-                print("%8s%10.1f MiB/s%10.1f MiB/s%8s%16s%10.1f MiB/s%7.1f%%%10.1f MiB/s%9.1f%%" \
-                % (start_time, imc_read_sec, imc_write_sec, task_pid if pid == -1 else k, \
-                task_name, task_read_sec, r * 100.0, task_write_sec, f * 100.0))
+                print_bw(start_time, imc_read_bw, imc_write_bw, task_pid if pid == -1 else k, \
+                task_name, task_read_bw, r * 100.0, task_write_bw, f * 100.0)
 
     clean_logs(pid)
     return run
@@ -299,6 +295,32 @@ def calc_print_bw(pid, multi_imc):
 def get_terminal_resolution():
     rows, columns = os.popen('stty size', 'r').read().split()
     return columns, rows
+
+def print_header():
+    sys.stdout.write("%8s" % "Time")
+    sys.stdout.write("%16s" % "iMCReadBW")
+    sys.stdout.write("%16s" % "iMCWriteBW")
+    sys.stdout.write("%8s" % "PID")
+    sys.stdout.write("%16s" % "TaskName")
+    sys.stdout.write("%16s" % "TaskReadBW")
+    sys.stdout.write("%8s" % "ReadBW%")
+    sys.stdout.write("%16s" % "*TaskWriteBW")
+    sys.stdout.write("%10s" % "*WriteBW%")
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+
+def print_bw(time, imc_r, imc_w, t_pid, t_name, t_r, t_r_perc, t_w, t_w_perc):
+    sys.stdout.write("%8s" % time)
+    sys.stdout.write("%10.1f MiB/s" % imc_r)
+    sys.stdout.write("%10.1f MiB/s" % imc_w)
+    sys.stdout.write("%8s" % t_pid)
+    sys.stdout.write("%16s" % t_name)
+    sys.stdout.write("%10.1f MiB/s" % t_r)
+    sys.stdout.write("%7.1f%%" % t_r_perc)
+    sys.stdout.write("%10.1f MiB/s" % t_w)
+    sys.stdout.write("%7.1f%%" % t_w_perc)
+    sys.stdout.write("\n")
+    sys.stdout.flush()
 
 # main() starts
 time = 0
@@ -308,6 +330,7 @@ p_id, measure_time, interval = parse_args(cmd_dict)
 
 if p_id == -1:
     print("!!! NOTE: Tasks with 0.0 Task/iMC read & write BW Ratio are not listed.")
+    print("")
 
 def sighandler(sig, frame):
     clean_logs(p_id)
@@ -316,9 +339,7 @@ def sighandler(sig, frame):
 
 signal(SIGINT, sighandler)
 
-print("")
-print("%8s%16s%16s%8s%16s%16s%8s%16s%10s" %("Time", "iMCReadBW", "iMCWriteBW", "PID", "TaskName", \
-        "TaskReadBW", "ReadBW%", "*TaskWriteBW", "*WriteBW%"))
+print_header()
 
 while time < measure_time:
     procs = []
@@ -334,7 +355,7 @@ while time < measure_time:
             clean_logs(p)
             continue
 
-        running = calc_print_bw(int(p), 1)
+        running = calc_print_bw(int(p))
         if running == 0:
             # task stopped, remove it from cmd_dict[p, cmd]
             del cmd_dict[p]
