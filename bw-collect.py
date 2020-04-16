@@ -1,8 +1,9 @@
 #!/usr/bin/env python2
 # Copyright (C) 2019 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
-import sys
 import os
+import sys
+import glob
 import argparse
 import subprocess
 
@@ -14,7 +15,11 @@ supported_cpus = (
 )
 
 ocr_read = {
-    "85": "cpu/event=0xbb,umask=0x1,offcore_rsp=0x7bc0007f7,name=read/",
+    "85": "cpu/event=0xbb,umask=0x1,offcore_rsp=0x7bc0007f7,name=OCR_READ_DRAM/",
+}
+
+ocr_read_pmem = {
+    "85": "cpu/event=0xbb,umask=0x1,offcore_rsp=0x783c007f7,name=OCR_READ_PMEM/",
 }
 
 ocr_write = {
@@ -25,8 +30,16 @@ uncore_imc_read = {
     "85": "uncore_imc_INDEX/event=0x10,umask=0x0,name=UNC_M_RPQ_INSERTS_IMC_INDEX/",
 }
 
+uncore_pmem_read = {
+    "85": "uncore_imc_INDEX/event=0xe3,umask=0x0,name=UNC_M_PMM_RPQ_INSERTS_IMC_INDEX/",
+}
+
 uncore_imc_write = {
     "85": "uncore_imc_INDEX/event=0x20,umask=0x0,name=UNC_M_WPQ_INSERTS_IMC_INDEX/",
+}
+
+uncore_pmem_write = {
+    "85": "uncore_imc_INDEX/event=0xe7,umask=0x0,name=UNC_M_PMM_WPQ_INSERTS_IMC_INDEX/",
 }
 
 core_all_loads = {
@@ -52,13 +65,23 @@ class PerfRun(object):
         return ret
 
 def task_args(cpu, measure_time, pid):
+    cmd = [perf, 'stat']
+
     if pid == -1:
-        return [perf, "stat", "-a", "--per-thread", "-e", ocr_read[cpu],\
-                "-e", core_all_stores[cpu], "-o", os.path.join(cur_dir, "logs", "task.log"),\
-                "--", "sleep", "%d" % (measure_time)]
-    return [perf, "stat", "-p", "%d" % (pid), "-e", ocr_read[cpu], "-e", core_all_stores[cpu],\
-            "-o", os.path.join(cur_dir, "logs", str(pid), "task.log"),\
-            "--", "sleep", "%d" %(measure_time)]
+        cmd.extend(['-a', '--per-thread', '-e', ocr_read[cpu]])
+        if pmem_exists:
+            cmd.extend(['-e', ocr_read_pmem[cpu]])
+        cmd.extend(['-e', core_all_stores[cpu], '-o', os.path.join(cur_dir, "logs", "task.log")])
+        cmd.extend(['--', 'sleep', str(measure_time)])
+    else:
+        cmd.extend(['-p', str(pid), '-e', ocr_read[cpu]])
+        if pmem_exists:
+            cmd.extend(['-e', ocr_read_pmem[cpu]])
+        cmd.extend(['-e', core_all_stores[cpu]])
+        cmd.extend(['-o', os.path.join(cur_dir, "logs", str(pid), "task.log")])
+        cmd.extend(['--', 'sleep', str(measure_time)])
+
+    return cmd
 
 def start_task(cpu, measure_time, pid):
     if pid == -1:
@@ -70,7 +93,7 @@ def start_task(cpu, measure_time, pid):
         os.remove(lp)
 
     task = PerfRun()
-    # collect per-task offcore_response reads/writes, and MEM_INST_RETIRED.ALL_LOADS/ALL_STORES
+    # collect per-task OCR DRAM/PMEM reads/writes, and MEM_INST_RETIRED.ALL_STORES
     task.execute(task_args(cpu, measure_time, pid))
     return task
 
@@ -103,6 +126,7 @@ def path_exists(s):
 
 def multiple_imc(cpu, l):
     i = 0
+
     while True:
         if i == 12:
             break
@@ -117,6 +141,17 @@ def multiple_imc(cpu, l):
             s = uncore_imc_write[cpu]
             s = s.replace("INDEX", str(i))
             l.append(s)
+
+            if pmem_exists:
+                l.append("-e")
+                s = uncore_pmem_read[cpu]
+                s = s.replace("INDEX", str(i))
+                l.append(s)
+
+                l.append("-e")
+                s = uncore_pmem_write[cpu]
+                s = s.replace("INDEX", str(i))
+                l.append(s)
         i += 1
 
 def unc_imc_args(cpu, measure_time, pid, log_path):
@@ -179,6 +214,8 @@ m_time = 5
 cpu_model = get_cpu_model()
 if cpu_model not in supported_cpus:
     sys.exit("CPU not supported!")
+
+pmem_exists = glob.glob("/dev/pmem*")
 
 perf = "perf"
 if not tool_installed(perf):
