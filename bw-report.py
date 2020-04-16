@@ -2,8 +2,9 @@
 # Copyright (C) 2019 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
 
-import sys
 import os
+import sys
+import glob
 import subprocess
 import argparse
 import shutil
@@ -68,13 +69,13 @@ def collect_task_bw(read_dict, all_stores_dict, pid):
 
             if pid != -1:
                 if len(l) == 2:
-                    if l[1] == "read":
+                    if l[1] == "OCR_READ_DRAM":
                         read_dict[str(pid)] = int(l[0].replace(',', ''))
                     if l[1] == "MEM_INST_RETIRED.ALL_STORES":
                         all_stores_dict[str(pid)] = int(l[0].replace(',', ''))
             else:
                 if len(l) == 3:
-                    if l[2] == "read":
+                    if l[2] == "OCR_READ_DRAM":
                         read_dict[l[0]] = int(l[1].replace(',', ''))
                     if l[2] == "MEM_INST_RETIRED.ALL_STORES":
                         all_stores_dict[l[0]] = int(l[1].replace(',', ''))
@@ -133,6 +134,8 @@ def collect_multi_imc_bw(pid):
     fd = open(lp)
     read_total = 0
     write_total = 0
+    pmem_read = 0
+    pmem_write = 0
     t = 0.0
 
     while True:
@@ -142,17 +145,23 @@ def collect_multi_imc_bw(pid):
                 break
             l = l.split()
             if len(l) == 2:
-                if "RPQ" in l[1]:
+                if "PMM_RPQ" in l[1]:
+                    pmem_read += float(l[0].replace(',', ''))
+                elif "PMM_WPQ" in l[1]:
+                    pmem_write += float(l[0].replace(',', ''))
+                elif "RPQ" in l[1]:
                     read_total += float(l[0].replace(',', ''))
-                else:
+                elif "WPQ" in l[1]:
                     write_total += float(l[0].replace(',', ''))
+                else:
+                    break
             if len(l) == 4:
                 t = float(l[0])
         except IOError:
             break
 
     fd.close()
-    return float(read_total) * 64, float(write_total) * 64, t
+    return float(read_total) * 64, float(write_total) * 64, float(pmem_read) * 64, float(pmem_write) * 64, t
 
 def get_pid_max():
     m = os.popen('cat /proc/sys/kernel/pid_max').read().strip()
@@ -245,7 +254,7 @@ def calc_print_bw(pid):
     system_all_stores_dict = {}
     system_time = collect_system_bw(system_all_stores_dict, pid)
 
-    imc_read_bytes, imc_write_bytes, imc_time = collect_multi_imc_bw(pid)
+    imc_read_bytes, imc_write_bytes, pmem_read_bytes, pmem_write_bytes, imc_time = collect_multi_imc_bw(pid)
 
     if task_time == 0.0 or imc_time == 0.0 or system_time == 0.0:
         # time is 0 means task ended, just return
@@ -253,6 +262,8 @@ def calc_print_bw(pid):
 
     imc_read_bw = imc_read_bytes / (1024*1024) / imc_time
     imc_write_bw = imc_write_bytes / (1024*1024) / imc_time
+    pmem_read_bw = pmem_read_bytes / (1024*1024) / imc_time
+    pmem_write_bw = pmem_write_bytes / (1024*1024) / imc_time
 
     for k in sorted(task_read_dict, key=task_read_dict.__getitem__, reverse=True):
         v = float(task_read_dict[k] * 64)
@@ -286,8 +297,9 @@ def calc_print_bw(pid):
 
             # only print for tasks that read/write BW ratio is not 0.0
             if(r > 0.0005 or f > 0.0005):
-                print_bw(start_time, imc_read_bw, imc_write_bw, task_pid if pid == -1 else k, \
-                task_name, task_read_bw, r * 100.0, task_write_bw, f * 100.0)
+                print_bw(start_time, imc_read_bw, imc_write_bw, pmem_read_bw, \
+                        pmem_write_bw, task_pid if pid == -1 else k, task_name,\
+                        task_read_bw, r * 100.0, task_write_bw, f * 100.0)
 
     clean_logs(pid)
     return run
@@ -300,8 +312,11 @@ def print_header():
     sys.stdout.write("%8s" % "Time")
     sys.stdout.write("%16s" % "iMCReadBW")
     sys.stdout.write("%16s" % "iMCWriteBW")
+    if (pmem_exists):
+        sys.stdout.write("%16s" % "PmemReadBW")
+        sys.stdout.write("%16s" % "PmemWriteBW")
     sys.stdout.write("%8s" % "PID")
-    sys.stdout.write("%16s" % "TaskName")
+    sys.stdout.write("%21s" % "TaskName")
     sys.stdout.write("%16s" % "TaskReadBW")
     sys.stdout.write("%8s" % "ReadBW%")
     sys.stdout.write("%16s" % "*TaskWriteBW")
@@ -309,12 +324,15 @@ def print_header():
     sys.stdout.write("\n")
     sys.stdout.flush()
 
-def print_bw(time, imc_r, imc_w, t_pid, t_name, t_r, t_r_perc, t_w, t_w_perc):
+def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc, t_w, t_w_perc):
     sys.stdout.write("%8s" % time)
     sys.stdout.write("%10.1f MiB/s" % imc_r)
     sys.stdout.write("%10.1f MiB/s" % imc_w)
+    if (pmem_exists):
+        sys.stdout.write("%10.1f MiB/s" % pmem_r)
+        sys.stdout.write("%10.1f MiB/s" % pmem_w)
     sys.stdout.write("%8s" % t_pid)
-    sys.stdout.write("%16s" % t_name)
+    sys.stdout.write("%21s" % t_name)
     sys.stdout.write("%10.1f MiB/s" % t_r)
     sys.stdout.write("%7.1f%%" % t_r_perc)
     sys.stdout.write("%10.1f MiB/s" % t_w)
@@ -339,6 +357,7 @@ def sighandler(sig, frame):
 
 signal(SIGINT, sighandler)
 
+pmem_exists = glob.glob("/dev/pmem*")
 print_header()
 
 while time < measure_time:
