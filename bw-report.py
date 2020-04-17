@@ -47,7 +47,7 @@ def collect_system_bw(all_stores_dict, pid):
     fd.close()
     return t
 
-def collect_task_bw(read_dict, all_stores_dict, pid):
+def collect_task_bw(dram_read_dict, pmem_read_dict, all_stores_dict, pid):
     if pid == -1:
         lp = os.path.join(cur_dir, "logs", "task.log")
     else:
@@ -70,14 +70,18 @@ def collect_task_bw(read_dict, all_stores_dict, pid):
             if pid != -1:
                 if len(l) == 2:
                     if l[1] == "OCR_READ_DRAM":
-                        read_dict[str(pid)] = int(l[0].replace(',', ''))
-                    if l[1] == "MEM_INST_RETIRED.ALL_STORES":
+                        dram_read_dict[str(pid)] = int(l[0].replace(',', ''))
+                    elif l[1] == "OCR_READ_PMEM":
+                        pmem_read_dict[str(pid)] = int(l[0].replace(',', ''))
+                    elif l[1] == "MEM_INST_RETIRED.ALL_STORES":
                         all_stores_dict[str(pid)] = int(l[0].replace(',', ''))
             else:
                 if len(l) == 3:
                     if l[2] == "OCR_READ_DRAM":
-                        read_dict[l[0]] = int(l[1].replace(',', ''))
-                    if l[2] == "MEM_INST_RETIRED.ALL_STORES":
+                        dram_read_dict[l[0]] = int(l[1].replace(',', ''))
+                    elif l[2] == "OCR_READ_PMEM":
+                        pmem_read_dict[l[0]] = int(l[1].replace(',', ''))
+                    elif l[2] == "MEM_INST_RETIRED.ALL_STORES":
                         all_stores_dict[l[0]] = int(l[1].replace(',', ''))
             if len(l) == 4 and l[1] == "seconds":
                 t = float(l[0])
@@ -247,9 +251,10 @@ def clean_logs(pid):
 def calc_print_bw(pid):
     run = 1
 
-    task_read_dict = {}
+    task_dram_read_dict = {}
+    task_pmem_read_dict = {}
     task_all_stores_dict = {}
-    start_time, task_time = collect_task_bw(task_read_dict, task_all_stores_dict, pid)
+    start_time, task_time = collect_task_bw(task_dram_read_dict, task_pmem_read_dict, task_all_stores_dict, pid)
 
     system_all_stores_dict = {}
     system_time = collect_system_bw(system_all_stores_dict, pid)
@@ -265,10 +270,20 @@ def calc_print_bw(pid):
     pmem_read_bw = pmem_read_bytes / (1024*1024) / imc_time
     pmem_write_bw = pmem_write_bytes / (1024*1024) / imc_time
 
-    for k in sorted(task_read_dict, key=task_read_dict.__getitem__, reverse=True):
-        v = float(task_read_dict[k] * 64)
-        task_read_bw = v / (1024*1024) / task_time
-        r = task_read_bw / imc_read_bw
+    for k in sorted(task_dram_read_dict, key=task_dram_read_dict.__getitem__, reverse=True):
+
+        # per-task DRAM read bandwidth and its percentage of total DRAM BW
+        v = float(task_dram_read_dict[k] * 64)
+        task_dram_read_bw = v / (1024*1024) / task_time
+        r = task_dram_read_bw / imc_read_bw
+
+        # per-task PMEM read bandwidth and its percentage of total PMEM BW
+        p = 0.0
+        task_pmem_read_bw = 0.0
+        if pmem_exists and (pmem_read_bw != 0) and (k in task_pmem_read_dict):
+            v = float(task_pmem_read_dict[k] * 64)
+            task_pmem_read_bw = v / (1024*1024) / task_time
+            p = task_pmem_read_bw / pmem_read_bw
 
         task_write_bw = 0.0
 
@@ -299,7 +314,8 @@ def calc_print_bw(pid):
             if(r > 0.0005 or f > 0.0005):
                 print_bw(start_time, imc_read_bw, imc_write_bw, pmem_read_bw, \
                         pmem_write_bw, task_pid if pid == -1 else k, task_name,\
-                        task_read_bw, r * 100.0, task_write_bw, f * 100.0)
+                        task_dram_read_bw, r * 100.0, task_write_bw, f * 100.0,\
+                        task_pmem_read_bw, p * 100.0)
 
     clean_logs(pid)
     return run
@@ -309,6 +325,7 @@ def get_terminal_resolution():
     return columns, rows
 
 def print_header():
+    sys.stdout.write("\n")
     sys.stdout.write("%8s" % "Time")
     sys.stdout.write("%16s" % "iMCReadBW")
     sys.stdout.write("%16s" % "iMCWriteBW")
@@ -321,10 +338,13 @@ def print_header():
     sys.stdout.write("%8s" % "ReadBW%")
     sys.stdout.write("%16s" % "*TaskWriteBW")
     sys.stdout.write("%10s" % "*WriteBW%")
+    if (pmem_exists):
+        sys.stdout.write("%16s" % "TaskPmemReadBW")
+        sys.stdout.write("%12s" % "PmemReadBW%")
     sys.stdout.write("\n")
     sys.stdout.flush()
 
-def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc, t_w, t_w_perc):
+def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc, t_w, t_w_perc, t_pmem_r_bw, t_pmem_r_bw_perc):
     sys.stdout.write("%8s" % time)
     sys.stdout.write("%10.1f MiB/s" % imc_r)
     sys.stdout.write("%10.1f MiB/s" % imc_w)
@@ -336,7 +356,10 @@ def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc, t
     sys.stdout.write("%10.1f MiB/s" % t_r)
     sys.stdout.write("%7.1f%%" % t_r_perc)
     sys.stdout.write("%10.1f MiB/s" % t_w)
-    sys.stdout.write("%7.1f%%" % t_w_perc)
+    sys.stdout.write("%9.1f%%" % t_w_perc)
+    if (pmem_exists):
+        sys.stdout.write("%10.1f MiB/s" % t_pmem_r_bw)
+        sys.stdout.write("%11.1f%%" % t_pmem_r_bw_perc)
     sys.stdout.write("\n")
     sys.stdout.flush()
 
@@ -346,10 +369,6 @@ cmd_dict = {}
 
 p_id, measure_time, interval = parse_args(cmd_dict)
 
-if p_id == -1:
-    print("!!! NOTE: Tasks with 0.0 Task/iMC read & write BW Ratio are not listed.")
-    print("")
-
 def sighandler(sig, frame):
     clean_logs(p_id)
     print("")
@@ -358,6 +377,11 @@ def sighandler(sig, frame):
 signal(SIGINT, sighandler)
 
 pmem_exists = glob.glob("/dev/pmem*")
+if pmem_exists:
+    print("Persistent Memory detected. PMEM related bandwidth will be reported as well.")
+if p_id == -1:
+    print("")
+    print("!!! NOTE: Tasks with 0.0 Task/iMC read & write BW Ratio are not listed.")
 print_header()
 
 while time < measure_time:
