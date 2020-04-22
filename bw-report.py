@@ -68,7 +68,8 @@ def collect_task_bw(dram_read_dict, pmem_read_dict, all_stores_dict, pid):
             l = l.split()
 
             if pid != -1:
-                if len(l) == 2:
+                # when there's multiplexing, length is 3, otherwise 2.
+                if (len(l) == 2) or (len(l) == 3):
                     if l[1] == "OCR_READ_DRAM":
                         dram_read_dict[str(pid)] = int(l[0].replace(',', ''))
                     elif l[1] == "OCR_READ_PMEM":
@@ -76,7 +77,8 @@ def collect_task_bw(dram_read_dict, pmem_read_dict, all_stores_dict, pid):
                     elif l[1] == "MEM_INST_RETIRED.ALL_STORES":
                         all_stores_dict[str(pid)] = int(l[0].replace(',', ''))
             else:
-                if len(l) == 3:
+                # when there's multiplexing, length is 4, otherwise 3.
+                if (len(l) == 3) or (len(l) == 4):
                     if l[2] == "OCR_READ_DRAM":
                         dram_read_dict[l[0]] = int(l[1].replace(',', ''))
                     elif l[2] == "OCR_READ_PMEM":
@@ -92,39 +94,6 @@ def collect_task_bw(dram_read_dict, pmem_read_dict, all_stores_dict, pid):
 
     fd.close()
     return start_time, t
-
-def collect_imc_bw(pid):
-    if pid == -1:
-        lp = os.path.join(cur_dir, "logs", "unc.log")
-    else:
-        lp = os.path.join(cur_dir, "logs", str(pid), "unc.log")
-
-    if not os.path.exists(lp):
-        sys.exit("No %s found, something wrong!\n" % lp)
-
-    fd = open(lp)
-    read_bw = 0
-    write_bw = 0
-    t = 0.0
-
-    while True:
-        try:
-            l = fd.readline()
-            if not l:
-                break
-            l = l.split()
-            if len(l) == 3:
-                if "RPQ" in l[2]:
-                    read_bw = float(l[0].replace(',', '')) * 1000000
-                else:
-                    write_bw = float(l[0].replace(',', '')) * 1000000
-            if len(l) == 4:
-                t = float(l[0])
-        except IOError:
-            break
-
-    fd.close()
-    return read_bw, write_bw, t
 
 def collect_multi_imc_bw(pid):
     if pid == -1:
@@ -148,7 +117,8 @@ def collect_multi_imc_bw(pid):
             if not l:
                 break
             l = l.split()
-            if len(l) == 2:
+            # when there's multiplexing, length is 3, otherwise 2.
+            if (len(l) == 2) or (len(l) == 3):
                 if "PMM_RPQ" in l[1]:
                     pmem_read += float(l[0].replace(',', ''))
                 elif "PMM_WPQ" in l[1]:
@@ -221,15 +191,16 @@ def parse_args(cmd_d):
         cmd.append("--time")
         cmd.append(str(i))
         cmd_d[str(pid)] = cmd
+        if args.pmem:
+            cmd.append("--pmem")
     else:
         for pid in cmd_d:
             cmd = cmd_d[str(pid)]
             cmd.append("--time")
             cmd.append(str(i))
             cmd_d[str(pid)] = cmd
-
-    if args.pmem:
-        cmd.append("--pmem")
+            if args.pmem:
+                cmd.append("--pmem")
 
     print("")
     print("Monitoring %s for %d seconds, refreshing in every %d seconds."\
@@ -280,7 +251,8 @@ def calc_print_bw(pid):
         # per-task DRAM read bandwidth and its percentage of total DRAM BW
         v = float(task_dram_read_dict[k] * 64)
         task_dram_read_bw = v / (1024*1024) / task_time
-        r = task_dram_read_bw / imc_read_bw
+        if (imc_read_bw != 0):
+            r = task_dram_read_bw / imc_read_bw
 
         # per-task PMEM read bandwidth and its percentage of total PMEM BW
         p = 0.0
