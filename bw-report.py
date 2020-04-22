@@ -179,6 +179,8 @@ def parse_args(cmd_d):
             help='measure time in seconds, 0 for infinite, default 1000s')
     ap.add_argument('-i', '--interval', type=int, default=5,\
             help='refresh interval in seconds, default 5s')
+    ap.add_argument('-pmem', '--pmem', action="store_true",\
+            help='monitor persistent memory bandwidth too, default not')
 
     args = ap.parse_args()
     if args.pid != -1:
@@ -226,11 +228,14 @@ def parse_args(cmd_d):
             cmd.append(str(i))
             cmd_d[str(pid)] = cmd
 
+    if args.pmem:
+        cmd.append("--pmem")
+
     print("")
     print("Monitoring %s for %d seconds, refreshing in every %d seconds."\
             % ("all tasks" if(pid == -1) else "%d task(s)" % num_tasks, m_time, i))
 
-    return  pid, m_time, i
+    return  pid, m_time, i, args.pmem
 
 def clean_logs(pid):
     if pid == -1:
@@ -280,7 +285,7 @@ def calc_print_bw(pid):
         # per-task PMEM read bandwidth and its percentage of total PMEM BW
         p = 0.0
         task_pmem_read_bw = 0.0
-        if pmem_exists and (pmem_read_bw != 0) and (k in task_pmem_read_dict):
+        if pmem_mon and (pmem_read_bw != 0) and (k in task_pmem_read_dict):
             v = float(task_pmem_read_dict[k] * 64)
             task_pmem_read_bw = v / (1024*1024) / task_time
             p = task_pmem_read_bw / pmem_read_bw
@@ -329,7 +334,7 @@ def print_header():
     sys.stdout.write("%8s" % "Time")
     sys.stdout.write("%16s" % "iMCReadBW")
     sys.stdout.write("%16s" % "iMCWriteBW")
-    if (pmem_exists):
+    if pmem_mon:
         sys.stdout.write("%16s" % "PmemReadBW")
         sys.stdout.write("%16s" % "PmemWriteBW")
     sys.stdout.write("%8s" % "PID")
@@ -338,7 +343,7 @@ def print_header():
     sys.stdout.write("%8s" % "ReadBW%")
     sys.stdout.write("%16s" % "*TaskWriteBW")
     sys.stdout.write("%10s" % "*WriteBW%")
-    if (pmem_exists):
+    if pmem_mon:
         sys.stdout.write("%16s" % "TaskPmemReadBW")
         sys.stdout.write("%12s" % "PmemReadBW%")
     sys.stdout.write("\n")
@@ -348,7 +353,7 @@ def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc, t
     sys.stdout.write("%8s" % time)
     sys.stdout.write("%10.1f MiB/s" % imc_r)
     sys.stdout.write("%10.1f MiB/s" % imc_w)
-    if (pmem_exists):
+    if pmem_mon:
         sys.stdout.write("%10.1f MiB/s" % pmem_r)
         sys.stdout.write("%10.1f MiB/s" % pmem_w)
     sys.stdout.write("%8s" % t_pid)
@@ -357,7 +362,7 @@ def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc, t
     sys.stdout.write("%7.1f%%" % t_r_perc)
     sys.stdout.write("%10.1f MiB/s" % t_w)
     sys.stdout.write("%9.1f%%" % t_w_perc)
-    if (pmem_exists):
+    if pmem_mon:
         sys.stdout.write("%10.1f MiB/s" % t_pmem_r_bw)
         sys.stdout.write("%11.1f%%" % t_pmem_r_bw_perc)
     sys.stdout.write("\n")
@@ -367,7 +372,7 @@ def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc, t
 time = 0
 cmd_dict = {}
 
-p_id, measure_time, interval = parse_args(cmd_dict)
+p_id, measure_time, interval, pmem_mon = parse_args(cmd_dict)
 
 def sighandler(sig, frame):
     clean_logs(p_id)
@@ -376,9 +381,8 @@ def sighandler(sig, frame):
 
 signal(SIGINT, sighandler)
 
-pmem_exists = glob.glob("/dev/pmem*")
-if pmem_exists:
-    print("Persistent Memory detected. PMEM related bandwidth will be reported as well.")
+if pmem_mon:
+    print("pmem specified. Persistent memory related bandwidth monitoring added.")
 if p_id == -1:
     print("")
     print("!!! NOTE: Tasks with 0.0 Task/iMC read & write BW Ratio are not listed.")
