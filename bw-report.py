@@ -4,7 +4,6 @@
 
 import os
 import sys
-import glob
 import subprocess
 import argparse
 import shutil
@@ -288,7 +287,7 @@ def calc_print_bw(pid):
                     break
 
             # only print for tasks that read/write BW ratio is not 0.0
-            if(r > 0.0005 or f > 0.0005):
+            if(r > 0.0005 or f > 0.0005 or p > 0.0005):
                 print_bw(start_time, imc_read_bw, imc_write_bw, pmem_read_bw, \
                         pmem_write_bw, task_pid if pid == -1 else k, task_name,\
                         task_dram_read_bw, r * 100.0, task_write_bw, f * 100.0,\
@@ -304,19 +303,19 @@ def get_terminal_resolution():
 def print_header():
     sys.stdout.write("\n")
     sys.stdout.write("%8s" % "Time")
-    sys.stdout.write("%16s" % "iMCReadBW")
-    sys.stdout.write("%16s" % "iMCWriteBW")
+    sys.stdout.write("%16s" % "DramReadBW")
+    sys.stdout.write("%16s" % "DramWriteBW")
     if pmem_mon:
         sys.stdout.write("%16s" % "PmemReadBW")
         sys.stdout.write("%16s" % "PmemWriteBW")
-    sys.stdout.write("%8s" % "PID")
+    sys.stdout.write("%8s" % "TaskPID")
     sys.stdout.write("%21s" % "TaskName")
-    sys.stdout.write("%16s" % "TaskReadBW")
-    sys.stdout.write("%8s" % "ReadBW%")
-    sys.stdout.write("%16s" % "*TaskWriteBW")
-    sys.stdout.write("%10s" % "*WriteBW%")
+    sys.stdout.write("%15s" % "TaskDramReadBW")
+    sys.stdout.write("%12s" % "DramReadBW%")
+    sys.stdout.write("%17s" % "*TaskDramWriteBW")
+    sys.stdout.write("%14s" % "*DramWriteBW%")
     if pmem_mon:
-        sys.stdout.write("%16s" % "TaskPmemReadBW")
+        sys.stdout.write("%15s" % "TaskPmemReadBW")
         sys.stdout.write("%12s" % "PmemReadBW%")
     sys.stdout.write("\n")
     sys.stdout.flush()
@@ -330,12 +329,12 @@ def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc, t
         sys.stdout.write("%10.1f MiB/s" % pmem_w)
     sys.stdout.write("%8s" % t_pid)
     sys.stdout.write("%21s" % t_name)
-    sys.stdout.write("%10.1f MiB/s" % t_r)
-    sys.stdout.write("%7.1f%%" % t_r_perc)
-    sys.stdout.write("%10.1f MiB/s" % t_w)
-    sys.stdout.write("%9.1f%%" % t_w_perc)
+    sys.stdout.write("%9.1f MiB/s" % t_r)
+    sys.stdout.write("%11.1f%%" % t_r_perc)
+    sys.stdout.write("%11.1f MiB/s" % t_w)
+    sys.stdout.write("%13.1f%%" % t_w_perc)
     if pmem_mon:
-        sys.stdout.write("%10.1f MiB/s" % t_pmem_r_bw)
+        sys.stdout.write("%9.1f MiB/s" % t_pmem_r_bw)
         sys.stdout.write("%11.1f%%" % t_pmem_r_bw_perc)
     sys.stdout.write("\n")
     sys.stdout.flush()
@@ -354,10 +353,10 @@ def sighandler(sig, frame):
 signal(SIGINT, sighandler)
 
 if pmem_mon:
-    print("pmem specified. Persistent memory related bandwidth monitoring added.")
+    print("pmem specified, persistent memory related bandwidth monitoring added.")
 if p_id == -1:
     print("")
-    print("!!! NOTE: Tasks with 0.0 Task/iMC read & write BW Ratio are not listed.")
+    print("!!! NOTE: Tasks with all 0.0% read/write BW consumptions are not listed.")
 print_header()
 
 while time < measure_time:
