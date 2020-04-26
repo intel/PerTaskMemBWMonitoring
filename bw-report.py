@@ -4,7 +4,6 @@
 
 import os
 import sys
-import glob
 import subprocess
 import argparse
 import shutil
@@ -68,7 +67,8 @@ def collect_task_bw(dram_read_dict, pmem_read_dict, all_stores_dict, pid):
             l = l.split()
 
             if pid != -1:
-                if len(l) == 2:
+                # when there's multiplexing, length is 3, otherwise 2.
+                if (len(l) == 2) or (len(l) == 3):
                     if l[1] == "OCR_READ_DRAM":
                         dram_read_dict[str(pid)] = int(l[0].replace(',', ''))
                     elif l[1] == "OCR_READ_PMEM":
@@ -76,7 +76,8 @@ def collect_task_bw(dram_read_dict, pmem_read_dict, all_stores_dict, pid):
                     elif l[1] == "MEM_INST_RETIRED.ALL_STORES":
                         all_stores_dict[str(pid)] = int(l[0].replace(',', ''))
             else:
-                if len(l) == 3:
+                # when there's multiplexing, length is 4, otherwise 3.
+                if (len(l) == 3) or (len(l) == 4):
                     if l[2] == "OCR_READ_DRAM":
                         dram_read_dict[l[0]] = int(l[1].replace(',', ''))
                     elif l[2] == "OCR_READ_PMEM":
@@ -92,39 +93,6 @@ def collect_task_bw(dram_read_dict, pmem_read_dict, all_stores_dict, pid):
 
     fd.close()
     return start_time, t
-
-def collect_imc_bw(pid):
-    if pid == -1:
-        lp = os.path.join(cur_dir, "logs", "unc.log")
-    else:
-        lp = os.path.join(cur_dir, "logs", str(pid), "unc.log")
-
-    if not os.path.exists(lp):
-        sys.exit("No %s found, something wrong!\n" % lp)
-
-    fd = open(lp)
-    read_bw = 0
-    write_bw = 0
-    t = 0.0
-
-    while True:
-        try:
-            l = fd.readline()
-            if not l:
-                break
-            l = l.split()
-            if len(l) == 3:
-                if "RPQ" in l[2]:
-                    read_bw = float(l[0].replace(',', '')) * 1000000
-                else:
-                    write_bw = float(l[0].replace(',', '')) * 1000000
-            if len(l) == 4:
-                t = float(l[0])
-        except IOError:
-            break
-
-    fd.close()
-    return read_bw, write_bw, t
 
 def collect_multi_imc_bw(pid):
     if pid == -1:
@@ -148,7 +116,8 @@ def collect_multi_imc_bw(pid):
             if not l:
                 break
             l = l.split()
-            if len(l) == 2:
+            # when there's multiplexing, length is 3, otherwise 2.
+            if (len(l) == 2) or (len(l) == 3):
                 if "PMM_RPQ" in l[1]:
                     pmem_read += float(l[0].replace(',', ''))
                 elif "PMM_WPQ" in l[1]:
@@ -179,6 +148,8 @@ def parse_args(cmd_d):
             help='measure time in seconds, 0 for infinite, default 1000s')
     ap.add_argument('-i', '--interval', type=int, default=5,\
             help='refresh interval in seconds, default 5s')
+    ap.add_argument('-pmem', '--pmem', action="store_true",\
+            help='monitor persistent memory bandwidth too, default not')
 
     args = ap.parse_args()
     if args.pid != -1:
@@ -219,18 +190,22 @@ def parse_args(cmd_d):
         cmd.append("--time")
         cmd.append(str(i))
         cmd_d[str(pid)] = cmd
+        if args.pmem:
+            cmd.append("--pmem")
     else:
         for pid in cmd_d:
             cmd = cmd_d[str(pid)]
             cmd.append("--time")
             cmd.append(str(i))
             cmd_d[str(pid)] = cmd
+            if args.pmem:
+                cmd.append("--pmem")
 
     print("")
     print("Monitoring %s for %d seconds, refreshing in every %d seconds."\
             % ("all tasks" if(pid == -1) else "%d task(s)" % num_tasks, m_time, i))
 
-    return  pid, m_time, i
+    return  pid, m_time, i, args.pmem
 
 def clean_logs(pid):
     if pid == -1:
@@ -275,12 +250,13 @@ def calc_print_bw(pid):
         # per-task DRAM read bandwidth and its percentage of total DRAM BW
         v = float(task_dram_read_dict[k] * 64)
         task_dram_read_bw = v / (1024*1024) / task_time
-        r = task_dram_read_bw / imc_read_bw
+        if (imc_read_bw != 0):
+            r = task_dram_read_bw / imc_read_bw
 
         # per-task PMEM read bandwidth and its percentage of total PMEM BW
         p = 0.0
         task_pmem_read_bw = 0.0
-        if pmem_exists and (pmem_read_bw != 0) and (k in task_pmem_read_dict):
+        if pmem_mon and (pmem_read_bw != 0) and (k in task_pmem_read_dict):
             v = float(task_pmem_read_dict[k] * 64)
             task_pmem_read_bw = v / (1024*1024) / task_time
             p = task_pmem_read_bw / pmem_read_bw
@@ -311,7 +287,7 @@ def calc_print_bw(pid):
                     break
 
             # only print for tasks that read/write BW ratio is not 0.0
-            if(r > 0.0005 or f > 0.0005):
+            if(r > 0.0005 or f > 0.0005 or p > 0.0005):
                 print_bw(start_time, imc_read_bw, imc_write_bw, pmem_read_bw, \
                         pmem_write_bw, task_pid if pid == -1 else k, task_name,\
                         task_dram_read_bw, r * 100.0, task_write_bw, f * 100.0,\
@@ -327,19 +303,19 @@ def get_terminal_resolution():
 def print_header():
     sys.stdout.write("\n")
     sys.stdout.write("%8s" % "Time")
-    sys.stdout.write("%16s" % "iMCReadBW")
-    sys.stdout.write("%16s" % "iMCWriteBW")
-    if (pmem_exists):
+    sys.stdout.write("%16s" % "DramReadBW")
+    sys.stdout.write("%16s" % "DramWriteBW")
+    if pmem_mon:
         sys.stdout.write("%16s" % "PmemReadBW")
         sys.stdout.write("%16s" % "PmemWriteBW")
-    sys.stdout.write("%8s" % "PID")
+    sys.stdout.write("%8s" % "TaskPID")
     sys.stdout.write("%21s" % "TaskName")
-    sys.stdout.write("%16s" % "TaskReadBW")
-    sys.stdout.write("%8s" % "ReadBW%")
-    sys.stdout.write("%16s" % "*TaskWriteBW")
-    sys.stdout.write("%10s" % "*WriteBW%")
-    if (pmem_exists):
-        sys.stdout.write("%16s" % "TaskPmemReadBW")
+    sys.stdout.write("%15s" % "TaskDramReadBW")
+    sys.stdout.write("%12s" % "DramReadBW%")
+    sys.stdout.write("%17s" % "*TaskDramWriteBW")
+    sys.stdout.write("%14s" % "*DramWriteBW%")
+    if pmem_mon:
+        sys.stdout.write("%15s" % "TaskPmemReadBW")
         sys.stdout.write("%12s" % "PmemReadBW%")
     sys.stdout.write("\n")
     sys.stdout.flush()
@@ -348,17 +324,17 @@ def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc, t
     sys.stdout.write("%8s" % time)
     sys.stdout.write("%10.1f MiB/s" % imc_r)
     sys.stdout.write("%10.1f MiB/s" % imc_w)
-    if (pmem_exists):
+    if pmem_mon:
         sys.stdout.write("%10.1f MiB/s" % pmem_r)
         sys.stdout.write("%10.1f MiB/s" % pmem_w)
     sys.stdout.write("%8s" % t_pid)
     sys.stdout.write("%21s" % t_name)
-    sys.stdout.write("%10.1f MiB/s" % t_r)
-    sys.stdout.write("%7.1f%%" % t_r_perc)
-    sys.stdout.write("%10.1f MiB/s" % t_w)
-    sys.stdout.write("%9.1f%%" % t_w_perc)
-    if (pmem_exists):
-        sys.stdout.write("%10.1f MiB/s" % t_pmem_r_bw)
+    sys.stdout.write("%9.1f MiB/s" % t_r)
+    sys.stdout.write("%11.1f%%" % t_r_perc)
+    sys.stdout.write("%11.1f MiB/s" % t_w)
+    sys.stdout.write("%13.1f%%" % t_w_perc)
+    if pmem_mon:
+        sys.stdout.write("%9.1f MiB/s" % t_pmem_r_bw)
         sys.stdout.write("%11.1f%%" % t_pmem_r_bw_perc)
     sys.stdout.write("\n")
     sys.stdout.flush()
@@ -367,7 +343,7 @@ def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc, t
 time = 0
 cmd_dict = {}
 
-p_id, measure_time, interval = parse_args(cmd_dict)
+p_id, measure_time, interval, pmem_mon = parse_args(cmd_dict)
 
 def sighandler(sig, frame):
     clean_logs(p_id)
@@ -376,12 +352,11 @@ def sighandler(sig, frame):
 
 signal(SIGINT, sighandler)
 
-pmem_exists = glob.glob("/dev/pmem*")
-if pmem_exists:
-    print("Persistent Memory detected. PMEM related bandwidth will be reported as well.")
+if pmem_mon:
+    print("pmem specified, persistent memory related bandwidth monitoring added.")
 if p_id == -1:
     print("")
-    print("!!! NOTE: Tasks with 0.0 Task/iMC read & write BW Ratio are not listed.")
+    print("!!! NOTE: Tasks with all 0.0% read/write BW consumptions are not listed.")
 print_header()
 
 while time < measure_time:

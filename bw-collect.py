@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 import os
 import sys
-import glob
 import argparse
 import subprocess
 
@@ -69,13 +68,13 @@ def task_args(cpu, measure_time, pid):
 
     if pid == -1:
         cmd.extend(['-a', '--per-thread', '-e', ocr_read[cpu]])
-        if pmem_exists:
+        if pmem_mon:
             cmd.extend(['-e', ocr_read_pmem[cpu]])
         cmd.extend(['-e', core_all_stores[cpu], '-o', os.path.join(cur_dir, "logs", "task.log")])
         cmd.extend(['--', 'sleep', str(measure_time)])
     else:
         cmd.extend(['-p', str(pid), '-e', ocr_read[cpu]])
-        if pmem_exists:
+        if pmem_mon:
             cmd.extend(['-e', ocr_read_pmem[cpu]])
         cmd.extend(['-e', core_all_stores[cpu]])
         cmd.extend(['-o', os.path.join(cur_dir, "logs", str(pid), "task.log")])
@@ -142,7 +141,7 @@ def multiple_imc(cpu, l):
             s = s.replace("INDEX", str(i))
             l.append(s)
 
-            if pmem_exists:
+            if pmem_mon:
                 l.append("-e")
                 s = uncore_pmem_read[cpu]
                 s = s.replace("INDEX", str(i))
@@ -215,8 +214,6 @@ cpu_model = get_cpu_model()
 if cpu_model not in supported_cpus:
     sys.exit("CPU not supported!")
 
-pmem_exists = glob.glob("/dev/pmem*")
-
 perf = "perf"
 if not tool_installed(perf):
     sys.exit("perf not available. Please install it first.")
@@ -224,6 +221,8 @@ if not tool_installed(perf):
 p = argparse.ArgumentParser(description='Collect per-task memory read/write bandwidth.')
 p.add_argument('-p', '--pid', type=int, help='task PID to be monitored, default -1 for all tasks')
 p.add_argument('-t', '--time', type=int, help='measure time in seconds, default 5s')
+p.add_argument('-pmem', '--pmem', action="store_true",\
+        help='monitor persistent memory bandwidth too, default not')
 
 args = p.parse_args()
 if args.pid != "":
@@ -234,6 +233,7 @@ if args.time != "":
     m_time = int(args.time)
     if m_time <= 0:
         sys.exit("Invalid measure time: %d" % m_time)
+pmem_mon = args.pmem
 
 log_dir = os.path.join(cur_dir, "logs")
 if not os.path.exists(log_dir):
