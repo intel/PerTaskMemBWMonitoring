@@ -13,7 +13,7 @@ supported_cpus = (
     "85",   # SKX/CLX
 )
 
-ocr_read = {
+ocr_read_dram = {
     "85": "cpu/event=0xbb,umask=0x1,offcore_rsp=0x7bc0007f7,name=OCR_READ_DRAM/",
 }
 
@@ -25,7 +25,7 @@ ocr_write_pmem = {
     "85": "cpu/event=0xb7,umask=0x1,offcore_rsp=0x3f83c00002,name=OCR_WRITE_PMEM/",
 }
 
-uncore_imc_read = {
+uncore_dram_read = {
     "85": "uncore_imc_INDEX/event=0x10,umask=0x0,name=UNC_M_RPQ_INSERTS_IMC_INDEX/",
 }
 
@@ -33,7 +33,7 @@ uncore_pmem_read = {
     "85": "uncore_imc_INDEX/event=0xe3,umask=0x0,name=UNC_M_PMM_RPQ_INSERTS_IMC_INDEX/",
 }
 
-uncore_imc_write = {
+uncore_dram_write = {
     "85": "uncore_imc_INDEX/event=0x20,umask=0x0,name=UNC_M_WPQ_INSERTS_IMC_INDEX/",
 }
 
@@ -67,13 +67,13 @@ def task_args(cpu, measure_time, pid):
     cmd = [perf, 'stat']
 
     if pid == -1:
-        cmd.extend(['-a', '--per-thread', '-e', ocr_read[cpu]])
+        cmd.extend(['-a', '--per-thread', '-e', ocr_read_dram[cpu]])
         if pmem_mon:
             cmd.extend(['-e', ocr_read_pmem[cpu]])
         cmd.extend(['-e', core_all_stores[cpu], '-o', os.path.join(cur_dir, "logs", "task.log")])
         cmd.extend(['--', 'sleep', str(measure_time)])
     else:
-        cmd.extend(['-p', str(pid), '-e', ocr_read[cpu]])
+        cmd.extend(['-p', str(pid), '-e', ocr_read_dram[cpu]])
         if pmem_mon:
             cmd.extend(['-e', ocr_read_pmem[cpu]])
             cmd.extend(['-e', ocr_write_pmem[cpu]])
@@ -133,12 +133,12 @@ def multiple_imc(cpu, l):
         path = "/sys/devices/uncore_imc_" + "%d" % (i)
         if path_exists(path):
             l.append("-e")
-            s = uncore_imc_read[cpu]
+            s = uncore_dram_read[cpu]
             s = s.replace("INDEX", str(i))
             l.append(s)
 
             l.append("-e")
-            s = uncore_imc_write[cpu]
+            s = uncore_dram_write[cpu]
             s = s.replace("INDEX", str(i))
             l.append(s)
 
@@ -156,7 +156,7 @@ def multiple_imc(cpu, l):
 
 def unc_imc_args(cpu, measure_time, pid, log_path):
     if path_exists("/sys/devices/uncore_imc"):
-        return [perf, "stat", "-e", uncore_imc_read[cpu], "-e", uncore_imc_write[cpu],\
+        return [perf, "stat", "-e", uncore_dram_read[cpu], "-e", uncore_dram_write[cpu],\
                 "-o", log_path, "--", "sleep", "%d" % (measure_time)], 0
 
     if path_exists("/sys/devices/uncore_imc_0"):

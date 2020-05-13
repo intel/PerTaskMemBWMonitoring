@@ -240,14 +240,14 @@ def calc_print_bw(pid):
     system_all_stores_dict = {}
     system_time = collect_system_bw(system_all_stores_dict, pid)
 
-    imc_read_bytes, imc_write_bytes, pmem_read_bytes, pmem_write_bytes, imc_time = collect_multi_imc_bw(pid)
+    dram_read_bytes, dram_write_bytes, pmem_read_bytes, pmem_write_bytes, imc_time = collect_multi_imc_bw(pid)
 
     if task_time == 0.0 or imc_time == 0.0 or system_time == 0.0:
         # time is 0 means task ended, just return
         return 0
 
-    imc_read_bw = imc_read_bytes / (1024*1024) / imc_time
-    imc_write_bw = imc_write_bytes / (1024*1024) / imc_time
+    dram_read_bw = dram_read_bytes / (1024*1024) / imc_time
+    dram_write_bw = dram_write_bytes / (1024*1024) / imc_time
     pmem_read_bw = pmem_read_bytes / (1024*1024) / imc_time
     pmem_write_bw = pmem_write_bytes / (1024*1024) / imc_time
 
@@ -256,8 +256,8 @@ def calc_print_bw(pid):
         # per-task DRAM read bandwidth and its percentage of total DRAM BW
         v = float(task_dram_read_dict[k] * 64)
         task_dram_read_bw = v / (1024*1024) / task_time
-        if (imc_read_bw != 0):
-            r = task_dram_read_bw / imc_read_bw
+        if (dram_read_bw != 0):
+            r = task_dram_read_bw / dram_read_bw
 
         # per-task PMEM read bandwidth and its percentage of total PMEM BW
         p = 0.0
@@ -283,7 +283,7 @@ def calc_print_bw(pid):
             task_pid = k.split('-')[-1]
         if k in task_all_stores_dict and system_all_stores_dict[0] > 0:
             f = float(task_all_stores_dict[k]) / float(system_all_stores_dict[0])
-            task_write_bw = f * imc_write_bw
+            task_write_bw = f * dram_write_bw
 
             # when 'perf stat --per-thread' for all tasks, get task name from task_pid instead of k
             if pid == -1:
@@ -301,7 +301,7 @@ def calc_print_bw(pid):
 
             # only print for tasks that read/write BW ratio is not 0.0
             if(r > 0.0005 or f > 0.0005 or p > 0.0005):
-                print_bw(start_time, imc_read_bw, imc_write_bw, pmem_read_bw, \
+                print_bw(start_time, dram_read_bw, dram_write_bw, pmem_read_bw, \
                         pmem_write_bw, task_pid if pid == -1 else k, task_name,\
                         task_dram_read_bw, r * 100.0, task_write_bw, f * 100.0,\
                         task_pmem_read_bw, p*100.0, task_pmem_write_bw, q*100.0)
@@ -335,11 +335,11 @@ def print_header():
     sys.stdout.write("\n")
     sys.stdout.flush()
 
-def print_bw(time, imc_r, imc_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc,\
+def print_bw(time, dram_r, dram_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc,\
         t_w, t_w_perc, t_pmem_r_bw, t_pmem_r_bw_perc, t_pmem_w_bw, t_pmem_w_bw_perc):
     sys.stdout.write("%8s" % time)
-    sys.stdout.write("%10.1f MiB/s" % imc_r)
-    sys.stdout.write("%10.1f MiB/s" % imc_w)
+    sys.stdout.write("%10.1f MiB/s" % dram_r)
+    sys.stdout.write("%10.1f MiB/s" % dram_w)
     if pmem_mon:
         sys.stdout.write("%10.1f MiB/s" % pmem_r)
         sys.stdout.write("%10.1f MiB/s" % pmem_w)
