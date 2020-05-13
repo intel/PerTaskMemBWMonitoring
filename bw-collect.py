@@ -21,8 +21,8 @@ ocr_read_pmem = {
     "85": "cpu/event=0xbb,umask=0x1,offcore_rsp=0x783c007f7,name=OCR_READ_PMEM/",
 }
 
-ocr_write = {
-    "85": "cpu/event=0xb7,umask=0x1,offcore_rsp=0x7bc000002,name=write/",
+ocr_write_pmem = {
+    "85": "cpu/event=0xb7,umask=0x1,offcore_rsp=0x3f83c00002,name=OCR_WRITE_PMEM/",
 }
 
 uncore_imc_read = {
@@ -76,6 +76,7 @@ def task_args(cpu, measure_time, pid):
         cmd.extend(['-p', str(pid), '-e', ocr_read[cpu]])
         if pmem_mon:
             cmd.extend(['-e', ocr_read_pmem[cpu]])
+            cmd.extend(['-e', ocr_write_pmem[cpu]])
         cmd.extend(['-e', core_all_stores[cpu]])
         cmd.extend(['-o', os.path.join(cur_dir, "logs", str(pid), "task.log")])
         cmd.extend(['--', 'sleep', str(measure_time)])
