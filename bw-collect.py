@@ -70,6 +70,7 @@ def task_args(cpu, measure_time, pid):
         cmd.extend(['-a', '--per-thread', '-e', ocr_read_dram[cpu]])
         if pmem_mon:
             cmd.extend(['-e', ocr_read_pmem[cpu]])
+            cmd.extend(['-e', ocr_write_pmem[cpu]])
         cmd.extend(['-e', core_all_stores[cpu], '-o', os.path.join(cur_dir, "logs", "task.log")])
         cmd.extend(['--', 'sleep', str(measure_time)])
     else:
