@@ -154,6 +154,12 @@ def parse_args(cmd_d):
             help='refresh interval in seconds, default 5s')
     ap.add_argument('-pmem', '--pmem', action="store_true",\
             help='monitor persistent memory bandwidth too, default not')
+    ap.add_mutually_exclusive_group(required=False)
+    ap.add_argument('-dram', '--dram', dest='dram', action="store_true",\
+            help='monitor DRAM related bandwidths, default TRUE')
+    ap.add_argument('-no-dram', '--no-dram', dest='dram', action="store_false",\
+            help='do not monitor DRAM realted bandwidths')
+    ap.set_defaults(dram=True)
 
     args = ap.parse_args()
     if args.pid != -1:
@@ -209,7 +215,7 @@ def parse_args(cmd_d):
     print("Monitoring %s for %d seconds, refreshing in every %d seconds."\
             % ("all tasks" if(pid == -1) else "%d task(s)" % num_tasks, m_time, i))
 
-    return  pid, m_time, i, args.pmem
+    return  pid, m_time, i, args.pmem, args.dram
 
 def clean_logs(pid):
     if pid == -1:
@@ -316,17 +322,19 @@ def get_terminal_resolution():
 def print_header():
     sys.stdout.write("\n")
     sys.stdout.write("%8s" % "Time")
-    sys.stdout.write("%16s" % "DramReadBW")
-    sys.stdout.write("%16s" % "DramWriteBW")
+    if dram_mon:
+        sys.stdout.write("%16s" % "DramReadBW")
+        sys.stdout.write("%16s" % "DramWriteBW")
     if pmem_mon:
         sys.stdout.write("%16s" % "PmemReadBW")
         sys.stdout.write("%16s" % "PmemWriteBW")
     sys.stdout.write("%8s" % "TaskPID")
     sys.stdout.write("%21s" % "TaskName")
-    sys.stdout.write("%15s" % "TaskDramReadBW")
-    sys.stdout.write("%12s" % "DramReadBW%")
-    sys.stdout.write("%17s" % "*TaskDramWriteBW")
-    sys.stdout.write("%14s" % "*DramWriteBW%")
+    if dram_mon:
+        sys.stdout.write("%15s" % "TaskDramReadBW")
+        sys.stdout.write("%12s" % "DramReadBW%")
+        sys.stdout.write("%17s" % "*TaskDramWriteBW")
+        sys.stdout.write("%14s" % "*DramWriteBW%")
     if pmem_mon:
         sys.stdout.write("%15s" % "TaskPmemReadBW")
         sys.stdout.write("%12s" % "PmemReadBW%")
@@ -338,17 +346,19 @@ def print_header():
 def print_bw(time, dram_r, dram_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc,\
         t_w, t_w_perc, t_pmem_r_bw, t_pmem_r_bw_perc, t_pmem_w_bw, t_pmem_w_bw_perc):
     sys.stdout.write("%8s" % time)
-    sys.stdout.write("%10.1f MiB/s" % dram_r)
-    sys.stdout.write("%10.1f MiB/s" % dram_w)
+    if dram_mon:
+        sys.stdout.write("%10.1f MiB/s" % dram_r)
+        sys.stdout.write("%10.1f MiB/s" % dram_w)
     if pmem_mon:
         sys.stdout.write("%10.1f MiB/s" % pmem_r)
         sys.stdout.write("%10.1f MiB/s" % pmem_w)
     sys.stdout.write("%8s" % t_pid)
     sys.stdout.write("%21s" % t_name)
-    sys.stdout.write("%9.1f MiB/s" % t_r)
-    sys.stdout.write("%11.1f%%" % t_r_perc)
-    sys.stdout.write("%11.1f MiB/s" % t_w)
-    sys.stdout.write("%13.1f%%" % t_w_perc)
+    if dram_mon:
+        sys.stdout.write("%9.1f MiB/s" % t_r)
+        sys.stdout.write("%11.1f%%" % t_r_perc)
+        sys.stdout.write("%11.1f MiB/s" % t_w)
+        sys.stdout.write("%13.1f%%" % t_w_perc)
     if pmem_mon:
         sys.stdout.write("%9.1f MiB/s" % t_pmem_r_bw)
         sys.stdout.write("%11.1f%%" % t_pmem_r_bw_perc)
@@ -361,7 +371,7 @@ def print_bw(time, dram_r, dram_w, pmem_r, pmem_w, t_pid, t_name, t_r, t_r_perc,
 time = 0
 cmd_dict = {}
 
-p_id, measure_time, interval, pmem_mon = parse_args(cmd_dict)
+p_id, measure_time, interval, pmem_mon, dram_mon = parse_args(cmd_dict)
 
 def sighandler(sig, frame):
     clean_logs(p_id)
@@ -371,7 +381,9 @@ def sighandler(sig, frame):
 signal(SIGINT, sighandler)
 
 if pmem_mon:
-    print("pmem specified, persistent memory related bandwidth monitoring added.")
+    print("\"pmem\" specified, persistent memory related bandwidth monitoring added.")
+if not dram_mon:
+    print("\"no-dram\" specified, DRAM related bandwidth will not be printed.")
 if p_id == -1:
     print("")
     print("!!! NOTE: Tasks with all 0.0% read/write BW consumptions are not listed.")
